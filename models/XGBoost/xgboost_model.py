@@ -93,7 +93,7 @@ plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
 plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=6))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig('xgb_returns.png', dpi=300, bbox_inches='tight')
+plt.savefig('models/XGBoost/xgb_returns.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # Price plot
@@ -137,11 +137,11 @@ plt.grid(True, alpha=0.3)
 plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig('xgb_prices_fixed.png', dpi=300, bbox_inches='tight')
+plt.savefig('models/XGBoost/xgb_prices_fixed.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 
 # Save
-joblib.dump(xgb, 'xgb_model.pkl')
-pd.DataFrame([metrics]).to_csv('xgb_results.csv', index=False)
+joblib.dump(xgb, 'models/XGBoost/xgb_model.pkl')
+pd.DataFrame([metrics]).to_csv('models/XGBoost/xgb_results.csv', index=False)
 print("\n✅ XGBOOST COMPLETE! 2 plots + model saved!")

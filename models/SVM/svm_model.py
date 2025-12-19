@@ -142,7 +142,7 @@ price_df = pd.DataFrame({
 })
 
 # Save to CSV
-price_df.to_csv('svm_price_predictions_test.csv', index=False)
+price_df.to_csv('models/SVM/svm_price_predictions_test.csv', index=False)
 print("\n✅ Saved date‑wise prices to svm_price_predictions_test.csv")
 
 # ---------- 5. METRICS ----------
@@ -186,7 +186,7 @@ plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=6))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig("svm_returns.png", dpi=300, bbox_inches="tight")
+plt.savefig("models/SVM/svm_returns.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # ---------- 7. PLOT 2 – CUMULATIVE RETURNS (STRATEGY vs BUY & HOLD) ----------
@@ -222,7 +222,7 @@ plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=6))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig("svm_cumulative.png", dpi=300, bbox_inches="tight")
+plt.savefig("models/SVM/svm_cumulative.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # ---------- 8. PLOT 3 – “PRICE‑STYLE” PATH FROM RETURNS (OPTIONAL) ----------
@@ -264,7 +264,7 @@ plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=6))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig("svm_prices.png", dpi=300, bbox_inches="tight")
+plt.savefig("models/SVM/svm_prices.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # ---------- 9. PLOT 4 – PERMUTATION FEATURE IMPORTANCE ----------
@@ -287,7 +287,7 @@ plt.title(
 )
 plt.xlabel("Importance")
 plt.tight_layout()
-plt.savefig("svm_importance.png", dpi=300, bbox_inches="tight")
+plt.savefig("models/SVM/svm_importance.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # ---------- 10. THESIS TABLE + SAVE ----------
@@ -298,10 +298,10 @@ print("|---------------|----------|")
 for k, v in metrics.items():
     print(f"| {k:<13} | {v:>8} |")
 
-joblib.dump(svm_model, "svm_nifty50_model.pkl")
-joblib.dump({"scaler_x": scaler_x, "scaler_y": scaler_y}, "svm_scalers.pkl")
-pd.DataFrame([metrics]).to_csv("svm_results.csv", index=False)
-importance_df.to_csv("svm_feature_importance.csv", index=False)
+joblib.dump(svm_model, "models/SVM/svm_nifty50_model.pkl")
+joblib.dump({"scaler_x": scaler_x, "scaler_y": scaler_y}, "models/SVM/svm_scalers.pkl")
+pd.DataFrame([metrics]).to_csv("models/SVM/svm_results.csv", index=False)
+importance_df.to_csv("models/SVM/svm_feature_importance.csv", index=False)
 
 print("\n✅ SVM COMPLETE! Files saved:")
 print("- svm_nifty50_model.pkl")

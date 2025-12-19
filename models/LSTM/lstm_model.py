@@ -114,7 +114,7 @@ for k, v in metrics.items():
     print(f"{k:<12}: {v}")
 
 # ================= CSV: DATE, ACTUAL, PREDICTED ================= #
-
+model = LSTM
 results_df = pd.DataFrame(
     {
         "Date": test_index,
@@ -122,7 +122,7 @@ results_df = pd.DataFrame(
         "Predicted_Close_LSTM": y_pred,
     }
 )
-results_df.to_csv("lstm_price_predictions_test.csv", index=False)
+results_df.to_csv("models/LSTM/lstm_price_predictions_test.csv", index=False)
 print("\n✅ Saved date‑wise prices to lstm_price_predictions_test.csv")
 
 # ================= PLOTS ================= #
@@ -164,7 +164,7 @@ plt.grid(True, alpha=0.3)
 plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig("lstm_prices_last200.png", dpi=300, bbox_inches="tight")
+plt.savefig("models/LSTM/lstm_prices_last200.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # 3) Training loss curve
@@ -177,13 +177,13 @@ plt.ylabel("MSE Loss")
 plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
-plt.savefig("lstm_loss.png", dpi=300, bbox_inches="tight")
+plt.savefig("models/LSTM/lstm_loss.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # ================= SAVE MODEL & SCALER ================= #
 
-model.save("lstm_nifty50_model.h5")
-joblib.dump(scaler, "lstm_close_scaler.pkl")
+model.save("models/LSTM/lstm_nifty50_model.h5")
+joblib.dump(scaler, "models/LSTM/lstm_close_scaler.pkl")
 
 print("\n✅ LSTM COMPLETE! Files saved:")
 print("- lstm_nifty50_model.h5")

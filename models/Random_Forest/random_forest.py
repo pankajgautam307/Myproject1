@@ -95,7 +95,7 @@ plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
 plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=6))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig('rf_returns.png', dpi=300, bbox_inches='tight')
+plt.savefig('models/Random_Forest/rf_returns.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # 7. PLOT 2: **PRICE PLOT** (Actual Closing vs Predicted Closing)
@@ -118,7 +118,7 @@ plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
 plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=6))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig('rf_prices.png', dpi=300, bbox_inches='tight')
+plt.savefig('models/Random_Forest/rf_prices.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # 8. PLOT 3: Cumulative Returns Strategy
@@ -134,7 +134,7 @@ plt.grid(True, alpha=0.3)
 plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig('rf_cumulative.png', dpi=300, bbox_inches='tight')
+plt.savefig('models/Random_Forest/rf_cumulative.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # 9. PLOT 4: Feature Importance
@@ -144,7 +144,7 @@ plt.barh(importance_df['Feature'], importance_df['Importance'], color='skyblue')
 plt.title('Random Forest Feature Importance', fontsize=14, fontweight='bold')
 plt.xlabel('Importance')
 plt.tight_layout()
-plt.savefig('rf_importance.png', dpi=300, bbox_inches='tight')
+plt.savefig('models/Random_Forest/rf_importance.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # 10. THESIS TABLE
@@ -155,7 +155,7 @@ for k, v in metrics.items():
     print(f"| {k:<13} | {v:>8} |")
 
 # 11. SAVE
-joblib.dump(rf, 'rf_complete_model.pkl')
-joblib.dump({'scaler_x': scaler_x, 'scaler_y': scaler_y}, 'scalers.pkl')
-pd.DataFrame([metrics]).to_csv('rf_results.csv', index=False)
+joblib.dump(rf, 'models/Random_Forest/rf_complete_model.pkl')
+joblib.dump({'scaler_x': scaler_x, 'scaler_y': scaler_y}, 'models/Random_Forest/scalers.pkl')
+pd.DataFrame([metrics]).to_csv('models/Random_Forest/rf_results.csv', index=False)
 print("\n✅ 4 PLOTS + MODEL SAVED!")
