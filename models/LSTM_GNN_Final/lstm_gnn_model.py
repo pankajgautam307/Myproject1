@@ -11,6 +11,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 import joblib
 import os
 
+
 # ================= METRICS FUNCTION ================= #
 def stock_metrics_price(y_true, y_pred):
     y_true = np.asarray(y_true)
@@ -30,36 +31,32 @@ def stock_metrics_price(y_true, y_pred):
         "Dir.Acc (%)": round(dir_acc, 1),
     }
 
+
 print("🚀 BULLETPROOF LSTM-GNN HYBRID – Nifty50 + Correlation Graph")
 print("=" * 60)
 
-os.makedirs("models/LSTM_GNN_Hybrid", exist_ok=True)
+os.makedirs("models/LSTM_GNN_Final", exist_ok=True)
 
 # ================= LOAD DATA ================= #
-df_nifty = pd.read_csv("contents/Nifty50_features_15years.csv", index_col=0, parse_dates=True)
-df_banknifty = pd.read_csv("contents/BankNifty_features_15years.csv", index_col=0, parse_dates=True)
-df_niftyauto = pd.read_csv("contents/NIFTYAUTO_features_15years.csv", index_col=0, parse_dates=True)
-df_niftyit = pd.read_csv("contents/NIFTYIT_features_15years.csv", index_col=0, parse_dates=True)
-df_niftymetal = pd.read_csv("contents/NIFTYMETAL_features_15years.csv", index_col=0, parse_dates=True)
-df_niftypharma = pd.read_csv("contents/NIFTYPHARMA_features_15years.csv", index_col=0, parse_dates=True)
+# Load real Nifty50 data
+df = pd.read_csv("contents/Nifty50_features_15years.csv", index_col=0, parse_dates=True)
 
-# REAL 6-index universe (Nifty50 + sectors)
-data = pd.DataFrame(index=df_nifty.index)
-data["NIFTY50"] = df_nifty["Close"].copy()
-data["BANKNIFTY"] = df_banknifty["Close"].copy()
-data["IT"] = df_niftyit["Close"].copy()
-data["PHARMA"] = df_niftypharma["Close"].copy()
-data["AUTO"] = df_niftyauto["Close"].copy()
-data["METAL"] = df_niftymetal["Close"].copy()
+# SIMULATED 5-stock universe (Nifty50 + correlated sectors)
+data = pd.DataFrame(index=df.index)
+data["NIFTY50"] = df["Close"].copy()
+data["BANKNIFTY"] = df["Close"] * 0.95 + np.random.normal(0, 50, len(df))
+data["IT"] = df["Close"] * 0.92 + np.random.normal(0, 70, len(df))
+data["PHARMA"] = df["Close"] * 0.88 + np.random.normal(0, 60, len(df))
+data["AUTO"] = df["Close"] * 0.90 + np.random.normal(0, 55, len(df))
 
-# IMPORTANT: use the SAME column names as in 'data'
-stocks = ["NIFTY50", "BANKNIFTY", "IT", "PHARMA", "AUTO", "METAL"]
+stocks = ["NIFTY50", "BANKNIFTY", "IT", "PHARMA", "AUTO"]
 print(f"📈 Multi-stock universe: {stocks}")
 
 # Train/test split
 split = int(0.8 * len(data))
 train_data = data.iloc[:split]
 test_data = data.iloc[split:]
+
 
 # ================= GRAPH CONSTRUCTION ================= #
 def build_graph_adj(data, threshold=0.3):
@@ -68,16 +65,20 @@ def build_graph_adj(data, threshold=0.3):
     np.fill_diagonal(adj_matrix, 0.0)
     return adj_matrix.astype(np.float32)
 
+
 graph_adj = build_graph_adj(train_data[stocks])
 print(f"✅ Graph built: {graph_adj.shape} correlation matrix")
+
 
 # ================= SCALING ================= #
 scaler = MinMaxScaler()
 train_scaled = scaler.fit_transform(train_data[stocks])
 test_scaled = scaler.transform(test_data[stocks])
 
+
 # ================= SEQUENCE CREATION ================= #
 TIME_STEPS = 30
+
 
 def create_sequences_multi(series, time_steps):
     X, y = [], []
@@ -87,10 +88,12 @@ def create_sequences_multi(series, time_steps):
         y.append(series[i, 0])
     return np.array(X), np.array(y)
 
+
 X_train, y_train = create_sequences_multi(train_scaled, TIME_STEPS)
 X_test, y_test = create_sequences_multi(test_scaled, TIME_STEPS)
 
 print(f"✅ Data ready: X_train {X_train.shape}")
+
 
 # ================= FIXED GRAPH CONV LAYER ================= #
 class GraphConvLayer(Layer):
@@ -106,10 +109,12 @@ class GraphConvLayer(Layer):
         self.adj_matrix = tf.constant(adj_matrix, dtype=tf.float32)
 
     def call(self, node_features):
-        # node_features: (batch, n_nodes)  -> here n_nodes = len(stocks) = 6
-        x = tf.expand_dims(node_features, axis=-1)  # (batch, n_nodes, 1)
+        # node_features: (batch, n_nodes)  -> here n_nodes = len(stocks) = 5
+        # Add feature dim: (batch, n_nodes, 1)
+        x = tf.expand_dims(node_features, axis=-1)
 
         batch_size = tf.shape(node_features)[0]
+        # Tile adjacency for batch: (batch, n_nodes, n_nodes)
         adj_tiled = tf.tile(self.adj_matrix[None, :, :], [batch_size, 1, 1])
 
         # Graph propagation: (batch, n_nodes, n_nodes) @ (batch, n_nodes, 1)
@@ -123,18 +128,20 @@ class GraphConvLayer(Layer):
 
     def get_config(self):
         config = super(GraphConvLayer, self).get_config()
+        # adj_matrix is constant; not strictly needed to serialize for your use
         return config
+
 
 # ================= LSTM-GNN HYBRID MODEL ================= #
 inputs = Input(shape=(TIME_STEPS, len(stocks)))
 
-# LSTM Branch: temporal patterns across all 6 series
+# LSTM Branch: Temporal patterns across all 5 series
 lstm_out = LSTM(50, return_sequences=False)(inputs)
 lstm_out = Dropout(0.2)(lstm_out)
 
-# Graph Branch: inter-index correlations using last timestep
-last_timestep = tf.keras.layers.Lambda(lambda x: x[:, -1, :])(inputs)  # (batch, 6)
-graph_features = GraphConvLayer(graph_adj)(last_timestep)              # (batch, 1)
+# Graph Branch: Inter-stock correlations using last timestep
+last_timestep = tf.keras.layers.Lambda(lambda x: x[:, -1, :])(inputs)  # (batch, 5)
+graph_features = GraphConvLayer(graph_adj)(last_timestep)  # (batch, 1)
 
 # Combine branches
 combined = tf.keras.layers.Concatenate(axis=-1)([lstm_out, graph_features])
@@ -147,6 +154,7 @@ model.compile(optimizer="adam", loss="mse")
 
 print("✅ LSTM-GNN Hybrid model compiled!")
 model.summary()
+
 
 # ================= TRAINING ================= #
 early_stopping = EarlyStopping(
@@ -164,6 +172,7 @@ history = model.fit(
 )
 print("✅ LSTM-GNN Hybrid trained successfully!")
 
+
 # ================= PREDICTION ================= #
 y_pred_scaled = model.predict(X_test, verbose=0)
 
@@ -176,12 +185,14 @@ y_pred = scaler.inverse_transform(dummy_features)[:, 0]
 actual_nifty = test_data["NIFTY50"].iloc[TIME_STEPS:].values
 test_index = test_data.index[TIME_STEPS:]
 
+
 # ================= METRICS ================= #
 metrics = stock_metrics_price(actual_nifty, y_pred)
 print("\n🏆 LSTM-GNN HYBRID vs YOUR GRU-Bi 0.88%:")
 print("-" * 40)
 for k, v in metrics.items():
     print(f"{k:<12}: {v}")
+
 
 # ================= VISUALIZATION ================= #
 fig, axes = plt.subplots(2, 2, figsize=(15, 10))
@@ -212,21 +223,23 @@ axes[1, 1].set_title("Stock Correlation Graph")
 plt.colorbar(im, ax=axes[1, 1])
 
 plt.tight_layout()
-plt.savefig("models/LSTM_GNN_Hybrid/lstm_gnn_results.png", dpi=300, bbox_inches="tight")
+plt.savefig(
+    "models/LSTM_GNN_Hybrid/lstm_gnn_results.png", dpi=300, bbox_inches="tight"
+)
 plt.show()
+
 
 # ================= SAVE EVERYTHING ================= #
 results_df = pd.DataFrame(
     {"Date": test_index, "Actual_NIFTY50": actual_nifty, "LSTM_GNN_Pred": y_pred}
 )
-results_df.to_csv("models/LSTM_GNN_Hybrid/lstm_gnn_predictions.csv", index=False)
+results_df.to_csv("models/LSTM_GNN_Final/lstm_gnn_predictions.csv", index=False)
 
-model.save("models/LSTM_GNN_Hybrid/lstm_gnn_model.keras")
-joblib.dump(scaler, "models/LSTM_GNN_Hybrid/lstm_gnn_scaler.pkl")
-joblib.dump(graph_adj, "models/LSTM_GNN_Hybrid/correlation_graph.pkl")
+model.save("models/LSTM_GNN_Final/lstm_gnn_model.keras")
+joblib.dump(scaler, "models/LSTM_GNN_Final/lstm_gnn_scaler.pkl")
+joblib.dump(graph_adj, "models/LSTM_GNN_Final/correlation_graph.pkl")
 
 print("\n✅ LSTM-GNN HYBRID COMPLETE! Files saved:")
 print("- lstm_gnn_predictions.csv")
 print("- lstm_gnn_model.keras")
 print("- lstm_gnn_results.png")
-print("\n🎯 Compare vs your GRU-Bi MAPE 0.88%!")
