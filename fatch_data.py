@@ -4,6 +4,27 @@ from datetime import datetime, timedelta
 
 # Define ticker and 15-year period
 
+#-------------RELIANCE INDUSTRIES----------------
+ticker = "RELIANCE.NS"
+end_date = datetime.now()
+start_date = end_date - timedelta(days=15*365)
+
+# Download data
+print("Downloading 15 years of RELIANCE data...")
+nifty50 = yf.download(ticker, start=start_date, end=end_date, interval="1d")
+
+# Save to CSV
+nifty50.to_csv("contents/RELIANCE_15years_daily.csv")
+print(f"Dataset saved: RELIANCE_15years_daily.csv ({len(nifty50)} rows)")
+
+# Display first few rows
+print("\nFirst 5 rows:")
+print(nifty50.head())
+
+# Display last few rows
+print("\nLast 5 rows:")
+print(nifty50.tail())
+"""
 #-------------Nifty50----------------
 ticker = "^NSEI"
 end_date = datetime.now()
@@ -130,3 +151,4 @@ print(niftymetal.head())
 print("\nLast 5 rows:")
 print(niftymetal.tail())
 
+"""

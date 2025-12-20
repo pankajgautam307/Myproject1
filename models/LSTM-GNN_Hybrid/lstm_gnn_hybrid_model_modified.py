@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Layer
@@ -10,6 +9,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import Adam
 import joblib
 import os
+
 
 # ================= METRICS FUNCTION ================= #
 def stock_metrics_price(y_true, y_pred):
@@ -31,12 +31,13 @@ def stock_metrics_price(y_true, y_pred):
     }
 
 
-print("🚀 LSTM-GNN HYBRID – 6 Indices, LOG RETURNS")
-print("=" * 70)
+print("🚀 LSTM-GNN HYBRID – 6 Indices, RAW LOG RETURNS (no scaler)")
+print("=" * 80)
 
-os.makedirs("models/LSTM_GNN_Hybrid_Returns_6idx", exist_ok=True)
+os.makedirs("models/LSTM-GNN_Hybrid", exist_ok=True)
 
-# ================= LOAD & ALIGN DATA (PRICES) ================= #
+
+# ================= LOAD & ALIGN PRICE DATA ================= #
 df_nifty = pd.read_csv("contents/Nifty50_features_15years.csv", index_col=0, parse_dates=True)
 df_banknifty = pd.read_csv("contents/BankNifty_features_15years.csv", index_col=0, parse_dates=True)
 df_niftyauto = pd.read_csv("contents/NIFTYAUTO_features_15years.csv", index_col=0, parse_dates=True)
@@ -44,7 +45,6 @@ df_niftyit = pd.read_csv("contents/NIFTYIT_features_15years.csv", index_col=0, p
 df_niftymetal = pd.read_csv("contents/NIFTYMETAL_features_15years.csv", index_col=0, parse_dates=True)
 df_niftypharma = pd.read_csv("contents/NIFTYPHARMA_features_15years.csv", index_col=0, parse_dates=True)
 
-# Align all on common dates
 prices = (
     df_nifty[["Close"]].rename(columns={"Close": "NIFTY50"})
     .join(df_banknifty[["Close"]].rename(columns={"Close": "BANKNIFTY"}), how="inner")
@@ -58,14 +58,14 @@ stocks = ["NIFTY50", "BANKNIFTY", "IT", "PHARMA", "AUTO", "METAL"]
 print(f"📈 Multi-index universe: {stocks}")
 print("Aligned price data shape:", prices.shape)
 
-# ================= CONVERT TO LOG RETURNS ================= #
+
+# ================= LOG RETURNS (UNSCALED) ================= #
 log_prices = np.log(prices)
 log_returns = log_prices.diff().dropna()
-prices = prices.loc[log_returns.index]  # align prices to returns index
+prices = prices.loc[log_returns.index]
 
-print("Sample prices NIFTY50:", prices["NIFTY50"].head().to_list())
-print("Sample log returns NIFTY50:", log_returns["NIFTY50"].head().to_list())
-print("Return mean/std:", log_returns["NIFTY50"].mean(), log_returns["NIFTY50"].std())
+print("Sample NIFTY50 returns:",
+      log_returns["NIFTY50"].head().to_list())
 
 
 # ================= TRAIN / TEST SPLIT ================= #
@@ -76,6 +76,7 @@ test_ret = log_returns.iloc[split:]
 train_price = prices.iloc[:split]
 test_price = prices.iloc[split:]
 
+
 # ================= GRAPH CONSTRUCTION (FROM TRAIN PRICES) ================= #
 def build_graph_adj(data_prices, threshold=0.1):
     corr_matrix = data_prices.corr().values
@@ -83,58 +84,38 @@ def build_graph_adj(data_prices, threshold=0.1):
     np.fill_diagonal(adj_matrix, 0.0)
     return adj_matrix.astype(np.float32)
 
+
 graph_adj = build_graph_adj(train_price[stocks])
 print(f"✅ Graph built: {graph_adj.shape} correlation matrix (threshold=0.1)")
 
-# ================= SCALING: RETURNS ================= #
-scaler = MinMaxScaler()
-train_scaled = scaler.fit_transform(train_ret[stocks])
-test_scaled = scaler.transform(test_ret[stocks])
 
-# ================= SEQUENCE CREATION (RETURNS) ================= #
+# ================= SEQUENCE CREATION ON UNSCALED RETURNS ================= #
 TIME_STEPS = 60
 
-def create_sequences_multi(series, time_steps):
+
+def create_sequences_multi(df_ret, time_steps):
+    arr = df_ret.values  # shape (T, 6)
     X, y = [], []
-    for i in range(time_steps, len(series)):
-        X.append(series[i - time_steps : i])
-        # predict next-step NIFTY50 return (index 0)
-        y.append(series[i, 0])
+    for i in range(time_steps, len(arr)):
+        X.append(arr[i - time_steps : i])
+        y.append(arr[i, 0])  # NIFTY50 next-step return
     return np.array(X), np.array(y)
-# ===== Sanity check: can we reconstruct prices from TRUE returns? =====
-X_train_tmp, y_train_tmp = create_sequences_multi(train_scaled, TIME_STEPS)
-
-dummy = np.zeros((len(y_train_tmp), len(stocks)))
-dummy[:, 0] = y_train_tmp
-true_ret_unscaled_debug = scaler.inverse_transform(dummy)[:, 0]
-
-start_price_debug = train_price["NIFTY50"].iloc[TIME_STEPS - 1]
-
-def reconstruct_prices(start_price, returns):
-    prices = [start_price]
-    for r in returns:
-        prices.append(prices[-1] * np.exp(r))
-    return np.array(prices[1:])
-
-recon = reconstruct_prices(start_price_debug, true_ret_unscaled_debug)
-
-print("\nSanity check recon vs actual (TRAIN, first 5 points):")
-print("actual:", train_price["NIFTY50"].iloc[TIME_STEPS : TIME_STEPS + 5].to_list())
-print("recon :", recon[:5].tolist())
 
 
-X_train, y_train = create_sequences_multi(train_scaled, TIME_STEPS)
-X_test, y_test = create_sequences_multi(test_scaled, TIME_STEPS)
+X_train, y_train = create_sequences_multi(train_ret[stocks], TIME_STEPS)
+X_test, y_test = create_sequences_multi(test_ret[stocks], TIME_STEPS)
 
-print(f"✅ Data ready (returns): X_train {X_train.shape}, y_train {y_train.shape}")
+print(f"✅ Data ready (raw returns): X_train {X_train.shape}, y_train {y_train.shape}")
+print("y_train stats:", y_train.mean(), y_train.std())
+
 
 # ================= RICH GRAPH CONV LAYER ================= #
 class GraphConvLayer(Layer):
-    
-    #Graph layer with per-node Dense -> A@X -> pooling -> Dense.
-    #Input: node_features (batch, n_nodes)
-    #Output: graph feature (batch, graph_units)
-    
+    """
+    Graph layer with per-node Dense -> A@X -> pooling -> Dense.
+    Input: node_features (batch, n_nodes)
+    Output: graph feature (batch, graph_units)
+    """
 
     def __init__(self, adj_matrix, node_units=16, graph_units=32, **kwargs):
         super(GraphConvLayer, self).__init__(**kwargs)
@@ -145,24 +126,13 @@ class GraphConvLayer(Layer):
         self.graph_dense = Dense(graph_units, activation="relu")
 
     def call(self, node_features):
-        # node_features: (batch, n_nodes)
         batch_size = tf.shape(node_features)[0]
-
-        # (batch, n_nodes, 1) -> (batch, n_nodes, node_units)
-        x = tf.expand_dims(node_features, axis=-1)
-        x = self.node_dense(x)
-
-        # tile adjacency: (batch, n_nodes, n_nodes)
+        x = tf.expand_dims(node_features, axis=-1)  # (batch, n_nodes, 1)
+        x = self.node_dense(x)                     # (batch, n_nodes, node_units)
         adj_tiled = tf.tile(self.adj_matrix[None, :, :], [batch_size, 1, 1])
-
-        # message passing: (batch, n_nodes, n_nodes) @ (batch, n_nodes, node_units)
-        x = tf.matmul(adj_tiled, x)
-
-        # global average pooling over nodes -> (batch, node_units)
-        x = tf.reduce_mean(x, axis=1)
-
-        # project to graph_units -> (batch, graph_units)
-        x = self.graph_dense(x)
+        x = tf.matmul(adj_tiled, x)                # (batch, n_nodes, node_units)
+        x = tf.reduce_mean(x, axis=1)              # (batch, node_units)
+        x = self.graph_dense(x)                    # (batch, graph_units)
         return x
 
     def get_config(self):
@@ -173,30 +143,27 @@ class GraphConvLayer(Layer):
         return config
 
 
-# ================= LSTM-GNN HYBRID MODEL (RETURNS) ================= #
+# ================= LSTM-GNN HYBRID (RAW RETURNS) ================= #
 inputs = Input(shape=(TIME_STEPS, len(stocks)))
 
-# LSTM branch
 lstm_out = LSTM(128, return_sequences=False)(inputs)
 lstm_out = Dropout(0.3)(lstm_out)
 
-# Graph branch on last timestep returns
-last_timestep = tf.keras.layers.Lambda(lambda x: x[:, -1, :])(inputs)  # (batch, 6)
+last_timestep = tf.keras.layers.Lambda(lambda x: x[:, -1, :])(inputs)
 graph_features = GraphConvLayer(graph_adj, node_units=16, graph_units=32)(last_timestep)
 
-# Combine
 combined = tf.keras.layers.Concatenate(axis=-1)([lstm_out, graph_features])
 combined = Dense(64, activation="relu")(combined)
 combined = Dropout(0.3)(combined)
-output = Dense(1)(combined)  # next-step NIFTY50 scaled return
+output = Dense(1)(combined)   # directly predict log-return
 
 model = Model(inputs=inputs, outputs=output)
-
 optimizer = Adam(learning_rate=1e-4, clipnorm=1.0)
 model.compile(optimizer=optimizer, loss="mse")
 
-print("✅ LSTM-GNN Hybrid (returns) model compiled!")
+print("✅ LSTM-GNN Hybrid (raw returns) model compiled!")
 model.summary()
+
 
 # ================= TRAINING ================= #
 early_stopping = EarlyStopping(
@@ -213,27 +180,14 @@ history = model.fit(
     verbose=1,
 )
 
-print("✅ LSTM-GNN Hybrid (returns) trained successfully!")
+print("✅ LSTM-GNN Hybrid (raw returns) trained successfully!")
 
-# ================= PREDICTION: RETURNS -> PRICES ================= #
-y_pred_scaled = model.predict(X_test, verbose=0)
 
-y_pred_scaled = model.predict(X_test, verbose=0)
-
-print("\nPred scaled min/max:",
-      float(y_pred_scaled.min()), float(y_pred_scaled.max()))
-print("First 5 preds scaled:",
-      y_pred_scaled[:5].flatten().tolist())
-
-"""
-# inverse-scale NIFTY50 returns
-dummy = np.zeros((len(y_pred_scaled), len(stocks)))
-dummy[:, 0] = y_pred_scaled.flatten()
-pred_ret_unscaled = scaler.inverse_transform(dummy)[:, 0]
+# ================= PREDICTION & PRICE RECONSTRUCTION ================= #
+y_pred_ret = model.predict(X_test, verbose=0).flatten()
 
 true_ret_unscaled = test_ret["NIFTY50"].iloc[TIME_STEPS:].values
 
-# reconstruct prices from returns
 def reconstruct_prices(start_price, returns):
     prices = [start_price]
     for r in returns:
@@ -241,75 +195,69 @@ def reconstruct_prices(start_price, returns):
     return np.array(prices[1:])
 
 start_price = test_price["NIFTY50"].iloc[TIME_STEPS - 1]
-y_pred_price = reconstruct_prices(start_price, pred_ret_unscaled)
+y_pred_price = reconstruct_prices(start_price, y_pred_ret)
 actual_price = reconstruct_prices(start_price, true_ret_unscaled)
 
 test_index = test_ret.index[TIME_STEPS:]
 
 # ================= METRICS ================= #
 metrics = stock_metrics_price(actual_price, y_pred_price)
-print("\n🏆 LSTM-GNN HYBRID (returns) – Price reconstruction:")
-print("-" * 50)
+print("\n🏆 LSTM-GNN HYBRID (raw returns) – Price reconstruction:")
+print("-" * 55)
 for k, v in metrics.items():
     print(f"{k:<12}: {v}")
 
 # ================= VISUALIZATION ================= #
 fig, axes = plt.subplots(2, 2, figsize=(15, 10))
 
-# Full prediction
 axes[0, 0].plot(test_index, actual_price, "g-", label="Actual NIFTY50", lw=2)
 axes[0, 0].plot(test_index, y_pred_price, "r-", label="LSTM-GNN Hybrid", lw=2)
-axes[0, 0].set_title("LSTM-GNN (Returns): NIFTY50 Price Prediction")
+axes[0, 0].set_title("NIFTY50 Price from Predicted Returns")
 axes[0, 0].legend()
 axes[0, 0].grid(True, alpha=0.3)
 
-# Last 200 days
 axes[0, 1].plot(test_index[-200:], actual_price[-200:], "g-", lw=2)
 axes[0, 1].plot(test_index[-200:], y_pred_price[-200:], "r-", lw=2)
 axes[0, 1].set_title("Last 200 Days")
 axes[0, 1].grid(True, alpha=0.3)
 
-# Training curves
 axes[1, 0].plot(history.history["loss"], label="Train Loss", lw=2)
 axes[1, 0].plot(history.history["val_loss"], label="Val Loss", lw=2)
-axes[1, 0].set_title("Training Curves (Returns)")
+axes[1, 0].set_title("Training Curves (Raw Returns)")
 axes[1, 0].legend()
 axes[1, 0].grid(True)
 
-# Correlation heatmap (prices)
 im = axes[1, 1].imshow(graph_adj, cmap="hot", interpolation="none")
 axes[1, 1].set_title("Stock Correlation Graph (Prices)")
 plt.colorbar(im, ax=axes[1, 1])
 
 plt.tight_layout()
 plt.savefig(
-    "models/LSTM_GNN_Hybrid_Returns_6idx/lstm_gnn_results_returns_6idx.png",
+    "models/LSTM-GNN_Hybrid/lstm_gnn_results_rawreturns_6idx.png",
     dpi=300,
     bbox_inches="tight",
 )
 plt.show()
 
-# ================= SAVE EVERYTHING ================= #
+# ================= SAVE ================= #
 results_df = pd.DataFrame(
     {
         "Date": test_index,
         "Actual_NIFTY50": actual_price,
         "LSTM_GNN_Pred": y_pred_price,
         "True_LogRet": true_ret_unscaled,
-        "Pred_LogRet": pred_ret_unscaled,
+        "Pred_LogRet": y_pred_ret,
     }
 )
 results_df.to_csv(
-    "models/LSTM_GNN_Hybrid_Returns_6idx/lstm_gnn_predictions_returns_6idx.csv",
+    "models/LSTM-GNN_Hybrid/lstm_gnn_predictions_rawreturns_6idx.csv",
     index=False,
 )
 
-model.save("models/LSTM_GNN_Hybrid_Returns_6idx/lstm_gnn_model_returns_6idx.keras")
-joblib.dump(scaler, "models/LSTM_GNN_Hybrid_Returns_6idx/lstm_gnn_scaler_returns.pkl")
-joblib.dump(graph_adj, "models/LSTM_GNN_Hybrid_Returns_6idx/correlation_graph.pkl")
+model.save("models/LSTM-GNN_Hybrid/lstm_gnn_model_rawreturns_6idx.keras")
+joblib.dump(graph_adj, "models/LSTM-GNN_Hybrid/correlation_graph.pkl")
 
-print("\n✅ LSTM-GNN HYBRID RETURNS (6 indices) COMPLETE! Files saved:")
-print("- lstm_gnn_predictions_returns_6idx.csv")
-print("- lstm_gnn_model_returns_6idx.keras")
-print("- lstm_gnn_results_returns_6idx.png")
-"""
+print("\n✅ LSTM-GNN HYBRID RAW RETURNS (6 indices) COMPLETE! Files saved:")
+print("- lstm_gnn_predictions_rawreturns_6idx.csv")
+print("- lstm_gnn_model_rawreturns_6idx.keras")
+print("- lstm_gnn_results_rawreturns_6idx.png")
